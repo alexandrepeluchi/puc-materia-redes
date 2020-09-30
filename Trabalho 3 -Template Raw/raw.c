@@ -51,7 +51,11 @@
 #include <sys/wait.h>
 
 // Endereço lógico IP da Fonte que estará enviando o Ping
-#define MOI "192.168.0.3"
+#define MOI "192.168.203.128"
+
+#define IP_MAXPACKET 65535
+
+int rcvreply(void);
 
 // Declarações das Structs de cabeçalhos caso o SO seja o OpenBSD
 #if defined(__OpenBSD__)
@@ -209,6 +213,7 @@ int main(int argc, char *argv[])
                  * de recepção do ping no caso o recvfrom()
                  */
                 printf("\nNow, write your recvfrom() code here!\n");
+                rcvreply();
         }
         else
         {
@@ -225,6 +230,52 @@ int main(int argc, char *argv[])
 
         // Finaliza aplicação
         return (0);
+}
+
+// Recebe o icmp de resposta (echo reply) com dados
+int rcvreply(void) {
+        
+        printf("\nChegou aqui!\n");
+
+        struct sockaddr saddr;
+        size_t len = 0, nbytes = -1;
+        int sd = -1;
+        unsigned char *buffer;
+
+        if ((sd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0) {
+                perror("Unable to create the socket");
+                exit(1);
+        }
+
+        if (fcntl(sd, F_SETFL, O_SYNC) != 0) {
+                perror("Request synchronous writes!");
+        }
+
+        printf("\nsd: %d\n", sd);
+
+        //Se essa constante nao foi definida anteriormente: #define IP_MAXPACKET 65535
+        // The buffer to receive payload (data)
+        buffer = (unsigned char *) malloc(IP_MAXPACKET);
+        memset(buffer, 0, IP_MAXPACKET);
+
+        len = sizeof(struct sockaddr);
+
+        do {
+                if ((nbytes = recvfrom(sd, buffer, IP_MAXPACKET, 0, (struct sockaddr *) &saddr, (socklen_t *) &len)) == -1) {
+                        perror("receive error ...");
+                } 
+                else 
+                {
+                        printf(" - Received an ICMP echo reply packet with data ... \n");
+                        printf("\nBuffer deu bom\n");
+                        printf("\n %s \n", buffer);
+                                // ESSA FUNCAO APRESENTARAH TODOS
+                                                // OS CAMPOS E DADOS RECEBIDOS
+                }
+                memset(buffer, 0, IP_MAXPACKET);
+        } while (nbytes > 0);
+        free(buffer);
+        return(close(sd));
 }
 
 /*
