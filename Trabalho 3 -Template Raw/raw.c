@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/time.h>
 #include <sys/types.h>
 
 // Macros para obter acesso as arrays de dados auxiliares associados a mensagem de um cabeçalho
@@ -50,9 +51,6 @@
 // Declarações para espera (wait)
 #include <sys/wait.h>
 
-// Endereço lógico IP da Fonte que estará enviando o Ping
-#define MOI "192.168.203.128"
-
 #define IP_MAXPACKET 65535
 
 int rcvreply(void);
@@ -80,6 +78,12 @@ struct packet
 struct iphdr *build_ip(struct iphdr *, const char *);
 struct icmphdr *build_icmp(struct icmphdr *);
 #endif
+
+// Definicao de struct para calculo de tempo de execução
+struct timeval start, end;
+
+// Pede o Ip do Host
+const char *hostAddr;
 
 // Declaração de Checksum
 unsigned short in_cksum(unsigned short *, int);
@@ -115,9 +119,21 @@ int main(int argc, char *argv[])
          * Calloc faz a mesma coisa mas de uma vez, não é preciso chamar memset a memória é limpa automaticamente
          */
         addr = (char *)calloc(1, 16 * sizeof(*addr));
+        hostAddr = (char *)calloc(1, 16 * sizeof(*hostAddr));
 
         // Recebe IP para executar o Ping
-        printf("\nSending an ICMP echo request packet ...\nEnter the address to ping: ");
+        printf("\nSending an ICMP echo request packet ...\nEnter the host address: ");
+        scanf("%16s", (char *)hostAddr);
+
+        // Verifica se é um endereço IP válido, senão encerra a aplicação
+        if (sscanf(hostAddr, "%u.%u.%u.%u", &dst[0], &dst[1], &dst[2], &dst[3]) != 4)
+        {
+                perror("Invalid host ip address");
+                return (0);
+        }
+
+        // Recebe IP para executar o Ping
+        printf("\nEnter the address to ping: ");
         scanf("%16s", (char *)addr);
 
         // Verifica se é um endereço IP válido, senão encerra a aplicação
@@ -128,7 +144,7 @@ int main(int argc, char *argv[])
         }
 
         // Printa o endereço de IP alvo
-        printf("Target address: %u.%u.%u.%u ... ", dst[0], dst[1], dst[2], dst[3]);
+        printf("\nTarget address: %u.%u.%u.%u ... ", dst[0], dst[1], dst[2], dst[3]);
 
         // Reserva e limpa área de memória
         packet = (char *)calloc(1, sizeof(*ip) + sizeof(*icmp));
@@ -206,13 +222,14 @@ int main(int argc, char *argv[])
          */
         serv.sin_addr.s_addr = inet_addr(addr);
 
+        gettimeofday(&start, NULL);
+
         if (fork() == 0)
         {
                 /*
                  * Cria um processo filho, que deriva do programa pai, aqui deverá ser inserido a lógica
                  * de recepção do ping no caso o recvfrom()
                  */
-                printf("\nNow, write your recvfrom() code here!\n");
                 rcvreply();
         }
         else
@@ -221,7 +238,7 @@ int main(int argc, char *argv[])
                  * Processo pai é executado, enviando uma mensagem no socket
                  */
                 sendto(sd, packet, len, 0, (struct sockaddr *)&serv, sizeof(struct sockaddr));
-                printf("package sent [parent process id: %u].\n", getpid());
+                printf("\n[+] Package sent [parent process id: %u].\n", getpid());
         }
         wait(0);
 
@@ -234,11 +251,9 @@ int main(int argc, char *argv[])
 
 // Recebe o icmp de resposta (echo reply) com dados
 int rcvreply(void) {
-        
-        printf("\nChegou aqui!\n");
 
         struct sockaddr saddr;
-        size_t len = 0, nbytes = -1;
+        size_t len = 0, nbytes = -1, errorCode = -1;
         int sd = -1;
         unsigned char *buffer;
 
@@ -251,9 +266,8 @@ int rcvreply(void) {
                 perror("Request synchronous writes!");
         }
 
-        printf("\nsd: %d\n", sd);
+        printf("\n\n[+] Fork - Successful Socket Raw Connection");
 
-        //Se essa constante nao foi definida anteriormente: #define IP_MAXPACKET 65535
         // The buffer to receive payload (data)
         buffer = (unsigned char *) malloc(IP_MAXPACKET);
         memset(buffer, 0, IP_MAXPACKET);
@@ -261,17 +275,19 @@ int rcvreply(void) {
         len = sizeof(struct sockaddr);
 
         do {
-                if ((nbytes = recvfrom(sd, buffer, IP_MAXPACKET, 0, (struct sockaddr *) &saddr, (socklen_t *) &len)) == -1) {
+                if ((nbytes = recvfrom(sd, buffer, IP_MAXPACKET, 0, (struct sockaddr *) &saddr, (socklen_t *) &len)) == errorCode) {
                         perror("receive error ...");
                 } 
                 else 
                 {
-                        printf(" - Received an ICMP echo reply packet with data ... \n");
-                        printf("\nBuffer deu bom\n");
-                        printf("\n %s \n", buffer);
-                                // ESSA FUNCAO APRESENTARAH TODOS
-                                                // OS CAMPOS E DADOS RECEBIDOS
+                        printf("\n[+] Received an ICMP echo reply packet  with data ...\n");
+                        printf("\nNumber of bytes: %ld\n", nbytes);
+                        printf("Packet Data: %s", buffer);
+                        gettimeofday(&end, NULL);
+                        printf("\n\nTime interval between Sent and Receive packet: %ld ms\n", ((end.tv_sec * 1000000 + end.tv_usec) - (start.tv_sec * 1000000 + start.tv_usec)));                       
+                
                 }
+                printf("Teste");
                 memset(buffer, 0, IP_MAXPACKET);
         } while (nbytes > 0);
         free(buffer);
@@ -334,7 +350,7 @@ unsigned short in_cksum(unsigned short *addr, int len)
         ip->ip_id = htons(getpid());
         ip->ip_ttl = 255;
         ip->ip_p = IPPROTO_ICMP;
-        ip->ip_src.s_addr = inet_addr(MOI);
+        ip->ip_src.s_addr = inet_addr(hostAddr);
         ip->ip_dst.s_addr = inet_addr(addr);
         ip->ip_sum = 0;
         return (ip);
@@ -364,7 +380,7 @@ struct iphdr *build_ip(struct iphdr *ip, const char *addr)
         ip->id = htons(getpid());
         ip->ttl = 255;
         ip->protocol = IPPROTO_ICMP;
-        ip->saddr = inet_addr(MOI);
+        ip->saddr = inet_addr(hostAddr);
         ip->daddr = inet_addr(addr);
         ip->check = 0;
         return (ip);
