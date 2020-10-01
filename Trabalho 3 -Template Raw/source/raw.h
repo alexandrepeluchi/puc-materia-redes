@@ -13,3 +13,5 @@ int rcvreply(void);
 
 /* Declaração de Checksum */
 unsigned short in_cksum(unsigned short *, int);
+
+void display(void *buf, int bytes);

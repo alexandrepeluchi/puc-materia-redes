@@ -100,13 +100,35 @@ unsigned short in_cksum(unsigned short *addr, int len)
         return (answer);
 }
 
+/* Exibe a resposta do recvfrom */
+void display(void *buf, int bytes)
+{	int i;
+	struct iphdr *ip = buf;
+	struct icmphdr *icmp = buf + ip->ihl * 4;
+
+	printf("\n--- IP and ICMP ---\n");
+	for ( i = 0; i < bytes; i++ )
+	{
+		if ( !(i & 15) ) printf("\n%X:  ", i);
+		printf("%X ", ((unsigned char*)buf)[i]);
+	}
+	printf("\n");
+	printf("IPv%d: hdr-size=%d pkt-size=%d protocol=%d TTL=%d",
+		ip->version, ip->ihl*4, ntohs(ip->tot_len), ip->protocol,
+		ip->ttl);
+
+        printf("\nICMP: type[%d/%d] checksum[%d] id[%d] seq[%d]\n",
+                icmp->type, icmp->code, ntohs(icmp->checksum),
+                icmp->un.echo.id, icmp->un.echo.sequence);
+}
+
 /* Recebe o icmp de resposta (echo reply) com dados */
 int rcvreply(void) {
 
         struct sockaddr saddr;
         size_t len = 0, nbytes = -1, errorCode = -1;
         int sd = -1;
-        unsigned char *buffer;
+        unsigned char *buffer;   
 
         if ((sd = socket(PF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0) {
                 perror("Unable to create the socket");
@@ -131,9 +153,8 @@ int rcvreply(void) {
                 } 
                 else 
                 {
-                        printf("\n[+] Received an ICMP echo reply packet  with data ...\n");
-                        printf("\nNumber of bytes: %ld\n", nbytes);
-                        printf("Packet Data: %s", buffer);                               
+                        printf("\n[+] Received an ICMP echo reply packet with data ...\n"); 
+                        display(buffer, nbytes);                                      
                 }
                 memset(buffer, 0, IP_MAXPACKET);
         } while (nbytes > 0);
